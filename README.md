@@ -15,6 +15,7 @@ No robotics experience needed. No prior soldering experience needed. The person 
 | `billy.py` | The final working Python — the talking fish |
 | `motors.py` | Standalone motor test rig — run this before `billy.py` to verify wiring |
 | `asoundrc.example` | The ALSA config that pins the USB mic + speaker as defaults |
+| `requirements-frozen.txt` | Exact dependency versions from a known-good Pi build — `pip install -r` for guaranteed-working setup |
 | `iot-identity/` | **Optional** production-grade credentials: CloudFormation template + walkthrough for X.509-cert auth instead of access keys |
 
 ## How to use this with Claude
