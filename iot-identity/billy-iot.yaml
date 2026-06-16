@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Billy Bass device identity: lets a fish with an X.509 certificate exchange
+  it for temporary AWS credentials that can do exactly one thing - talk to
+  Nova 2 Sonic on Amazon Bedrock. Deploy in us-east-1.
+
+Resources:
+
+  # The role the fish assumes. Note what it CAN'T do: everything except
+  # invoking one model in one region.
+  FishRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: billy-bass-fish-role
+      Description: Temporary-credential role for Billy Bass devices (Nova Sonic only)
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: credentials.iot.amazonaws.com
+            Action: sts:AssumeRole
+            # Confused-deputy protection: only OUR role alias in OUR account
+            # may use this trust relationship.
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnEquals:
+                aws:SourceArn: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:rolealias/billy-bass-role-alias
+      Policies:
+        - PolicyName: billy-nova-sonic-only
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: BillyTalksToNovaSonicOnly
+                Effect: Allow
+                Action: bedrock:InvokeModelWithBidirectionalStream
+                Resource: !Sub arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.nova-2-sonic-v1:0
+
+  # The role alias is what devices reference when requesting credentials.
+  # Indirection on purpose: you can rotate/replace the role behind the alias
+  # without touching any fish.
+  FishRoleAlias:
+    Type: AWS::IoT::RoleAlias
+    Properties:
+      RoleAlias: billy-bass-role-alias
+      RoleArn: !GetAtt FishRole.Arn
+      CredentialDurationSeconds: 3600
+
+  # The IoT policy attached to each fish's certificate: the cert is allowed
+  # to do exactly one thing too - trade itself for credentials via the alias.
+  FishIoTPolicy:
+    Type: AWS::IoT::Policy
+    Properties:
+      PolicyName: billy-bass-assume-role
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: iot:AssumeRoleWithCertificate
+            Resource: !Sub arn:aws:iot:${AWS::Region}:${AWS::AccountId}:rolealias/billy-bass-role-alias
+
+Outputs:
+  RoleAliasName:
+    Description: Role alias the fish requests credentials through
+    Value: !Ref FishRoleAlias
+  IoTPolicyName:
+    Description: Attach this policy to each fish certificate
+    Value: !Ref FishIoTPolicy
+  NextStep:
+    Description: What to do after deploying
+    Value: >
+      Run 'aws iot create-keys-and-certificate' to mint a certificate for your
+      fish, attach the policy above to it, then see IOT_SETUP.md step 3.

@@ -1,0 +1,23 @@
+# Never commit AWS credentials or device certs
+.aws/
+*.pem
+*.key
+private.key
+certificate.pem
+endpoint.txt
+AmazonRootCA1.pem
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp

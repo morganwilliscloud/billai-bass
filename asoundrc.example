@@ -1,0 +1,9 @@
+pcm.!default {
+    type asym
+    playback.pcm "plug:hw:UACDemoV10"
+    capture.pcm "plug:hw:Device"
+}
+ctl.!default {
+    type hw
+    card UACDemoV10
+}
