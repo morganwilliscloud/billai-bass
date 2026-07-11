@@ -18,26 +18,26 @@ No robotics experience needed. No prior soldering experience needed. The person 
 | `requirements-frozen.txt` | Exact dependency versions from a known-good Pi build — `pip install -r` for guaranteed-working setup |
 | `iot-identity/` | **Optional** production-grade credentials: CloudFormation template + walkthrough for X.509-cert auth instead of access keys |
 
-## How to use this with Claude
+## How to use this with an AI assistant
 
-Paste this README into Claude (or another AI assistant) and say: *"I'm building this. Walk me through it one step at a time — wait for me to confirm each step before giving the next."* That's the way it was built; that's the way it builds best. See the **Build this WITH Claude** section below for what to send when stuck.
+Paste this README into Claude (or another AI assistant) and say: *"I'm building this. Walk me through it one step at a time — wait for me to confirm each step before giving the next."* That's the way it was built; that's the way it builds best. See the **Build this WITH an AI Assistant** section below for what to send when stuck.
 
 ---
 
-## 🤝 Build this WITH Claude
+## 🤝 Build this WITH an AI Assistant
 
-This guide is designed to be done **alongside Claude** (Claude Code in a terminal, the Claude desktop app, or claude.ai). Seriously — this is the single best tip in this document:
+This project was created **with help from Claude Code** and you can use any AI assistant to help you get through.
 
-**Paste this entire guide into Claude and say: "I'm building this. Walk me through it one step at a time — wait for me to confirm each step before giving the next."**
+**Paste this entire guide into your AI and say: "I'm building this. Walk me through it one step at a time — wait for me to confirm each step before giving the next."**
 
-Claude will pace the build to you, debug your exact error messages, and adapt when your hardware differs slightly from this guide. Things Claude is great at during this build:
+Your AI will pace the build to you, debug your exact error messages, and adapt when your hardware differs slightly from this guide. Things AI is great at during this build:
 
-- **Paste your exact error message** — the scary 50-line Python traceback usually has one meaningful line, and Claude will find it.
+- **Paste your exact error message** — the scary 50-line Python traceback usually has one meaningful line, and AI will find it.
 - **Send photos** — stuck identifying a motor? Can't tell which pin is which? Photograph it and ask. (In Claude Code on a Mac: drop the image file into the terminal, or say "look at ~/Downloads/IMG_1234.jpg".)
-- **Say "I know nothing about X"** — Claude will back up and explain. There are no dumb questions.
+- **Say "I know nothing about X"** — AI will back up and explain. There are no dumb questions.
 - **Ask before cutting/soldering anything you're unsure about.**
 
-If you hit something this guide doesn't cover, that's not a failure of you — it's a gap in the guide. Claude + your error message will get you through.
+If you hit something this guide doesn't cover, that's not a failure of you. It's probably a gap in the guide. AI + your error message will get you through.
 
 ---
 
@@ -633,11 +633,6 @@ Talk to your fish. Expected choreography: head rises as Billy answers → mouth 
 ## 🔐 Appendix: credentials — the pragmatic way vs. the production way
 
 This guide's main path puts a **tightly-scoped IAM access key** on the Pi (one action, one model, one region — §prerequisites). For a personal fish in a personal account, that's a reasonable trade: worst case if the SD card leaks is fish-chat on your bill, and the kill switch is one click (deactivate the key in IAM).
-
-Alternatives you might wonder about, and why the guide doesn't use them:
-
-- **Bedrock API keys** (the newer `Authorization: Bearer` style): not usable here — Strands' Nova Sonic provider authenticates with SigV4 (classic AWS signing) and doesn't speak bearer tokens. Long-term Bedrock API keys are also IAM-user keys under the hood, so the risk profile is nearly identical anyway.
-- **Secrets Manager for the keys**: chicken-and-egg — the fish would need AWS credentials to fetch its AWS credentials. It adds a hop without removing the secret-on-device.
 
 **The production-grade answer is AWS IoT Core's credential provider** — the pattern real device fleets use:
 
