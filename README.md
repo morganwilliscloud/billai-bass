@@ -34,7 +34,7 @@ Claude will pace the build to you, debug your exact error messages, and adapt wh
 
 - **Paste your exact error message** — the scary 50-line Python traceback usually has one meaningful line, and Claude will find it.
 - **Send photos** — stuck identifying a motor? Can't tell which pin is which? Photograph it and ask. (In Claude Code on a Mac: drop the image file into the terminal, or say "look at ~/Downloads/IMG_1234.jpg".)
-- **Say "I know nothing about X"** — Claude will back up and explain. There are no dumb questions; "how do I even plug this in" is where this guide's original build started.
+- **Say "I know nothing about X"** — Claude will back up and explain. There are no dumb questions.
 - **Ask before cutting/soldering anything you're unsure about.**
 
 If you hit something this guide doesn't cover, that's not a failure of you — it's a gap in the guide. Claude + your error message will get you through.
