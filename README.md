@@ -2,7 +2,7 @@
 ### Powered by Strands Agents Bidirectional Streaming + Amazon Nova 2 Sonic
 
 
-
+https://github.com/user-attachments/assets/02e84cd4-72e2-4b01-8b80-c83e910037e6
 
 
 Turn a Big Mouth Billy Bass into a real-time voice assistant: you talk, the fish talks back — head swiveling, mouth lip-syncing to its own voice, tail flapping for emphasis. The fish runs a [Strands Agents](https://strandsagents.com) **bidirectional streaming agent** (`BidiAgent`) on a Raspberry Pi 5, streaming live audio to and from **Amazon Nova 2 Sonic** on Amazon Bedrock.
