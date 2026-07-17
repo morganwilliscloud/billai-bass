@@ -219,6 +219,29 @@ arecord -d 3 -f S16_LE -r 16000 test.wav && aplay test.wav
 
 Hear yourself? **The hardest Pi-specific problem is now behind you.** (16000 Hz is deliberate — that's Nova Sonic's rate.)
 
+**Set the volume — through `wpctl`, not `amixer`.** Here's the trap: current
+Raspberry Pi OS ships PipeWire/WirePlumber even on Lite, and WirePlumber keeps
+its **own** per-device volume memory that it re-applies ~15 seconds into every
+boot — *after* ALSA's restore runs. Set volume with `amixer` or `alsamixer` and
+it will work, `sudo alsactl store` will even "save" it… and the next reboot
+quietly snaps back to whatever WirePlumber remembered. (This cost the original
+build a multi-reboot debugging session. The boot log tells the story:
+`alsa-restore` finishes, then `wireplumber` overwrites it 14 seconds later.
+Last writer wins.)
+
+So talk to the last writer:
+
+```bash
+wpctl status        # find your speaker under "Sinks:", e.g. "59. UACDemoV1.0 Analog Stereo"
+wpctl set-volume 59 0.90    # use YOUR sink number; 0.90 = 90%
+```
+
+WirePlumber persists this per-device (in `~/.local/state/wireplumber/`), so it
+survives reboots — the sink *number* changes between boots, but the setting
+sticks to the device. Verify after your next reboot with
+`wpctl status | grep -i <speaker name>`. (`amixer -c <card> sset PCM 90%` is
+still fine for *live* tweaking mid-session — just know it won't persist.)
+
 ## 1.5 Python environment + Strands
 
 ```bash
@@ -660,6 +683,7 @@ Why it's better: no long-lived secret exists on the device at all; each fish has
 | `no AWS credentials found` | env vars don't survive logout | `~/.aws/credentials` file (§1.6) |
 | `Invalid sample rate` / `capture slave is not defined` | `~/.asoundrc` missing or wrong card names | `cat ~/.asoundrc`, `arecord -l`, fix names |
 | `~/.asoundrc` keeps disappearing after reboot | You installed Desktop OS, not Lite — the Wayfire panel deletes it | `sudo systemctl set-default multi-user.target && sudo systemctl disable lightdm.service && sudo reboot` |
+| Volume resets after every reboot | WirePlumber re-applies its own saved volume late in boot, overwriting `amixer`/`alsactl` | set it via `wpctl set-volume` instead (§1.4) |
 | ALSA warning wall at startup | normal | ignore unless there's a Traceback |
 | `lgpio` build fails: `swig` not found | missing build tool | `sudo apt install -y swig`, re-pip |
 | Billy interrupts himself | speaker echo trips barge-in | separate mic & speaker, lower volume |
