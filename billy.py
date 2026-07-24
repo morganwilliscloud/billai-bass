@@ -28,6 +28,7 @@ import asyncio
 import base64
 import math
 import time
+import webrtcvad
 from array import array
 
 from gpiozero import OutputDevice, PWMOutputDevice
@@ -89,25 +90,67 @@ class BillyBody(_BidiAudioOutput):
         return (data, flag)
 
 
-class GatedMic(_BidiAudioInput):
-    """Sends silence to the model whenever Billy is currently speaking."""
+class PrivacyGatedMic(_BidiAudioInput):
+    """Gates the microphone locally using WebRTC VAD to protect user privacy.
 
-    def __init__(self, config, body):
+    Only streams actual audio when local voice is detected, otherwise streams silence.
+    """
+
+    def __init__(self, config, body, vad_aggressiveness=3, timeout=5.0):
         super().__init__(config)
         self._body = body
+        self._vad = webrtcvad.Vad(vad_aggressiveness)
+        self._timeout = timeout
+        self._buffer = b""
+        self._last_speech_time = 0.0
+        self._is_listening = False
 
     async def __call__(self):
         event = await super().__call__()
+        raw_audio = base64.b64decode(event["audio"])
+
+        # 1. Check if the fish body is currently speaking (feedback prevention)
         if time.monotonic() - self._body.last_loud < MIC_GATE_HOLDOVER:
-            raw = base64.b64decode(event["audio"])
-            silence = base64.b64encode(b"\x00" * len(raw)).decode("utf-8")
-            return BidiAudioInputEvent(
-                audio=silence,
-                channels=event["channels"],
-                format=event["format"],
-                sample_rate=event["sample_rate"],
-            )
-        return event
+            return self._make_silence_event(event, len(raw_audio))
+
+        # 2. Run VAD analysis on the incoming chunk
+        self._buffer += raw_audio
+        frame_size = 960  # 30ms frame at 16kHz 16-bit mono
+
+        has_speech = False
+        while len(self._buffer) >= frame_size:
+            frame = self._buffer[:frame_size]
+            self._buffer = self._buffer[frame_size:]
+
+            # webrtcvad returns True if speech is detected
+            if self._vad.is_speech(frame, 16000):
+                has_speech = True
+                break
+
+        now = time.monotonic()
+        if has_speech:
+            if not self._is_listening:
+                print("[VAD] Speech detected. Un-gating microphone.")
+                self._is_listening = True
+            self._last_speech_time = now
+        elif self._is_listening and (now - self._last_speech_time > self._timeout):
+            print("[VAD] No speech detected. Gating microphone.")
+            self._is_listening = False
+
+        # 3. Stream raw audio if in Listening state; otherwise stream digital silence
+        if self._is_listening:
+            return event
+        else:
+            return self._make_silence_event(event, len(raw_audio))
+
+    def _make_silence_event(self, original_event, length):
+        silence = base64.b64encode(b"\x00" * length).decode("utf-8")
+        return BidiAudioInputEvent(
+            audio=silence,
+            channels=original_event["channels"],
+            format=original_event["format"],
+            sample_rate=original_event["sample_rate"],
+        )
 
 
 model = BidiNovaSonicModel(
@@ -138,7 +181,7 @@ agent = BidiAgent(
 
 audio_io = BidiAudioIO()
 body = BillyBody({})
-mic = GatedMic({}, body)
+mic = PrivacyGatedMic({}, body)
 
 
 async def body_loop():

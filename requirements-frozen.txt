@@ -74,4 +74,5 @@ urllib3==2.7.0
 uvicorn==0.49.0
 watchdog==6.0.0
 wcwidth==0.8.1
+webrtcvad==2.0.10
 wrapt==2.2.1
