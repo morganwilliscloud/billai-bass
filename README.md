@@ -17,6 +17,7 @@ No robotics experience needed. No prior soldering experience needed. The person 
 |---|---|
 | `README.md` | This guide — start here, work top to bottom |
 | `billy.py` | The final working Python — the talking fish |
+| `billy_tools.py` | Billy's assistant tools — weather, news headlines, and (optional) Google Calendar + Gmail |
 | `motors.py` | Standalone motor test rig — run this before `billy.py` to verify wiring |
 | `asoundrc.example` | The ALSA config that pins the USB mic + speaker as defaults |
 | `requirements-frozen.txt` | Exact dependency versions from a known-good Pi build — `pip install -r` for guaranteed-working setup |
@@ -651,11 +652,49 @@ Talk to your fish. Expected choreography: head rises as Billy answers → mouth 
 ## 🎨 Make it yours / next steps
 
 - **Personality**: the `system_prompt` is Billy's soul. Make him a pirate, a grumpy IT guy, your team's standup bot.
-- **Tools**: `BidiAgent` runs tools mid-conversation without blocking speech — Billy can check the weather while flapping. See the Strands docs.
+- **Tools**: `BidiAgent` runs tools mid-conversation without blocking speech — Billy can check the weather while flapping. This kit ships with three: see 🧰 below.
 - **The button** (yellow/green wires you kept): wire to GPIO 24 + ground, use it to start/stop sessions instead of always-listening.
 - **Run on boot**: ask Claude to set up a `systemd` service so Billy wakes with the Pi.
 - **Wake word**: Porcupine ("Hey Billy") runs locally on the Pi — see the billy-b-assistant project for the pattern.
 - **Reassembly**: cut a notch in the backplate for cables, mount the mic near the original sensor hole, velcro the Pi to the plaque.
+
+## 🧰 Give Billy tools (weather, news, calendar & email)
+
+`billy_tools.py` turns Billy from a novelty into an actual (still ridiculous) personal assistant. `billy.py` loads whatever is configured automatically — no code changes needed.
+
+**Weather and news work out of the box.** In the venv on the Pi:
+
+```bash
+pip install feedparser
+```
+
+Then tell Billy where he lives and what he reads (add to `~/.bashrc`, or your systemd unit if you did the run-on-boot step — plain `export` in a terminal won't survive a reboot, same gotcha as §1.6):
+
+```bash
+export BILLY_LATITUDE=47.61        # defaults to Seattle if unset
+export BILLY_LONGITUDE=-122.33
+export BILLY_NEWS_FEEDS="https://feeds.bbci.co.uk/news/rss.xml,https://feeds.npr.org/1001/rss.xml"
+```
+
+Weather comes from [Open-Meteo](https://open-meteo.com/) — no API key, no account. News is plain RSS; any feed URLs work.
+
+**Calendar and email are optional** and use the [strands-google](https://github.com/cagataycali/strands-google) community integration (one tool, 200+ Google APIs). One-time setup, easiest done on your laptop:
+
+1. `pip install strands-google` (both laptop and Pi).
+2. In [Google Cloud Console](https://console.cloud.google.com/): create a project, enable the **Gmail API** and **Google Calendar API**, and create an **OAuth client ID** of type *Desktop app*. Download the client JSON.
+3. Run the built-in auth helper with **read-only scopes** — Billy has no business sending email as you:
+   ```bash
+   GOOGLE_API_SCOPES=gmail.readonly,calendar.readonly python -m strands_google.google_auth
+   ```
+   A browser opens; approve access. This writes a token file (e.g. `~/gmail_token.json`).
+4. Copy the token file to the Pi and point Billy at it:
+   ```bash
+   export GOOGLE_OAUTH_CREDENTIALS=~/gmail_token.json
+   ```
+
+If `GOOGLE_OAUTH_CREDENTIALS` isn't set, Billy simply doesn't get the Google tool — weather and news still work. As always: paste this section into Claude and do it together.
+
+One honest note: strands-google is a community-maintained integration (Apache-2.0, listed in the official Strands integrations catalog). It's great for a fish; audit it yourself before pointing it at an account you care about.
 
 ## 🔐 Appendix: credentials — the pragmatic way vs. the production way
 

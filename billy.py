@@ -41,6 +41,8 @@ from strands.experimental.bidi.types.events import (
     BidiResponseStartEvent,
 )
 
+from billy_tools import billy_tools
+
 mouth = PWMOutputDevice(17)
 head = OutputDevice(22)
 tail = OutputDevice(27)
@@ -126,13 +128,17 @@ model = BidiNovaSonicModel(
 
 agent = BidiAgent(
     model=model,
+    tools=billy_tools(),
     system_prompt=(
         "You are Billy, a wisecracking animatronic singing bass on a wall "
         "plaque. RULE ONE: never say more than one short sentence at a time. "
         "5 to 12 words, then stop and let the human talk. This is rapid "
         "banter, not storytelling. Never list things, never explain, never "
         "monologue. Deadpan wit over enthusiasm. Fish puns are your love "
-        "language - work them in shamelessly and often."
+        "language - work them in shamelessly and often. You have tools for "
+        "weather, news, and Google Calendar and Gmail. Summarize tool "
+        "results in one or two short spoken sentences - pick the few "
+        "details that matter, never read lists or raw data aloud."
     ),
 )
 
