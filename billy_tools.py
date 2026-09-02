@@ -28,6 +28,8 @@ voice agent: long tool calls mean a fish staring at you in silence.
 
 import json
 import os
+import subprocess
+import sys
 import urllib.request
 
 from strands import tool
@@ -97,6 +99,37 @@ def get_news_headlines(limit: int = 6) -> dict:
         for entry in parsed.entries[:per_feed]:
             headlines.append({"source": source, "headline": entry.title})
     return {"headlines": headlines[:limit]}
+
+
+_song_proc: subprocess.Popen | None = None
+
+
+def song_now_playing() -> bool:
+    """True while Billy's song is playing. billy.py uses this to gate the
+    mic (so the model doesn't hear the song) and to chomp the mouth."""
+    return _song_proc is not None and _song_proc.poll() is None
+
+
+@tool
+def play_song() -> dict:
+    """Play Billy's original song out loud. Use whenever someone asks Billy
+    to sing, play his song, or perform."""
+    global _song_proc
+    song = os.environ.get("BILLY_SONG", "")
+    if not song or not os.path.exists(os.path.expanduser(song)):
+        return {"error": "no song configured - set BILLY_SONG to an audio file"}
+    if song_now_playing():
+        return {"status": "already singing"}
+    player = "afplay" if sys.platform == "darwin" else "aplay"
+    _song_proc = subprocess.Popen(
+        [player, os.path.expanduser(song)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return {
+        "status": "playing",
+        "note": "The song is now playing out loud. Say one short hype line.",
+    }
 
 
 _google_services: dict = {}
@@ -210,6 +243,8 @@ def _load_google_token_from_secrets() -> None:
 def billy_tools() -> list:
     """All tools Billy should carry, based on what's configured."""
     tools = [get_weather, get_news_headlines]
+    if os.environ.get("BILLY_SONG"):
+        tools.append(play_song)
     if os.environ.get("BILLY_GOOGLE_SECRET_ID") and not os.environ.get("GOOGLE_OAUTH_CREDENTIALS"):
         _load_google_token_from_secrets()
     if os.environ.get("GOOGLE_OAUTH_CREDENTIALS"):
