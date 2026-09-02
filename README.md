@@ -18,6 +18,7 @@ No robotics experience needed. No prior soldering experience needed. The person 
 | `README.md` | This guide — start here, work top to bottom |
 | `billy.py` | The final working Python — the talking fish |
 | `billy_tools.py` | Billy's assistant tools — weather, news headlines, and (optional) Google Calendar + Gmail |
+| `google_setup.py` | One-time Google OAuth setup with read-only scopes; can stash the token in AWS Secrets Manager |
 | `motors.py` | Standalone motor test rig — run this before `billy.py` to verify wiring |
 | `asoundrc.example` | The ALSA config that pins the USB mic + speaker as defaults |
 | `requirements-frozen.txt` | Exact dependency versions from a known-good Pi build — `pip install -r` for guaranteed-working setup |
@@ -681,18 +682,23 @@ Weather comes from [Open-Meteo](https://open-meteo.com/) — no API key, no acco
 **Calendar and email are optional** and use the [strands-google](https://github.com/cagataycali/strands-google) community integration (one tool, 200+ Google APIs). One-time setup, easiest done on your laptop:
 
 1. `pip install strands-google` (both laptop and Pi).
-2. In [Google Cloud Console](https://console.cloud.google.com/): create a project, enable the **Gmail API** and **Google Calendar API**, and create an **OAuth client ID** of type *Desktop app*. Download the client JSON.
-3. Run the built-in auth helper with **read-only scopes** — Billy has no business sending email as you:
+2. In [Google Cloud Console](https://console.cloud.google.com/): create a project, enable the **Gmail API** and **Google Calendar API**, and create an **OAuth client ID** of type *Desktop app*. Download the client JSON and save it as `gmail_credentials.json` next to `google_setup.py`.
+3. On your laptop, run this repo's setup script — NOT strands-google's built-in runner, whose default scopes include full Gmail send/modify, Drive, Photos, and Contacts. `google_setup.py` requests exactly two **read-only** scopes (Gmail + Calendar); Billy has no business sending email as you:
    ```bash
-   GOOGLE_API_SCOPES=gmail.readonly,calendar.readonly python -m strands_google.google_auth
+   python google_setup.py
    ```
-   A browser opens; approve access. This writes a token file (e.g. `~/gmail_token.json`).
-4. Copy the token file to the Pi and point Billy at it:
-   ```bash
-   export GOOGLE_OAUTH_CREDENTIALS=~/gmail_token.json
-   ```
+   A browser opens; approve access. This writes `gmail_token.json`.
+4. Get the token to the fish — pick one:
+   - **Simple**: copy `gmail_token.json` to the Pi and `export GOOGLE_OAUTH_CREDENTIALS=/home/morgan/gmail_token.json`.
+   - **Nicer (recommended if you did the IoT credentials appendix)**: keep the token off the SD card entirely by storing it in AWS Secrets Manager (~$0.40/month):
+     ```bash
+     python google_setup.py --secret-id billy/google-token
+     ```
+     Then on the Pi just `export BILLY_GOOGLE_SECRET_ID=billy/google-token`. At startup Billy fetches the token into `/dev/shm` (RAM — gone at power-off). Add `secretsmanager:GetSecretValue` on that one secret's ARN to the Pi's IAM policy.
 
-If `GOOGLE_OAUTH_CREDENTIALS` isn't set, Billy simply doesn't get the Google tool — weather and news still work. As always: paste this section into Claude and do it together.
+Real talk on what Secrets Manager buys you: the Pi's AWS identity is still on the SD card, so a stolen card can still fetch the secret — this isn't magic. What you get is no Google credential at rest on the device, one place to rotate or revoke, and a CloudTrail log of every fetch. Your ultimate kill switch either way is [myaccount.google.com/permissions](https://myaccount.google.com/permissions) — revoke the app there and every copy of the token dies instantly.
+
+If neither variable is set, Billy simply doesn't get the Google tool — weather and news still work. As always: paste this section into Claude and do it together.
 
 One honest note: strands-google is a community-maintained integration (Apache-2.0, listed in the official Strands integrations catalog). It's great for a fish; audit it yourself before pointing it at an account you care about.
 

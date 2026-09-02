@@ -12,10 +12,14 @@ voice agent: long tool calls mean a fish staring at you in silence.
                         defaults to BBC and NPR.
 
     use_google          Calendar and Gmail via the strands-google
-                        community integration. Only enabled when
-                        GOOGLE_OAUTH_CREDENTIALS is set — see README
-                        for the one-time OAuth setup. Keep the scopes
-                        read-only; Billy has no business sending email.
+                        community integration. Enabled when either
+                        GOOGLE_OAUTH_CREDENTIALS (token file path) or
+                        BILLY_GOOGLE_SECRET_ID (AWS Secrets Manager
+                        secret holding the token, fetched into tmpfs at
+                        startup so it never touches the SD card) is set.
+                        See README and google_setup.py for the one-time
+                        OAuth setup. Keep the scopes read-only; Billy
+                        has no business sending email.
 """
 
 import json
@@ -91,9 +95,29 @@ def get_news_headlines(limit: int = 6) -> dict:
     return {"headlines": headlines[:limit]}
 
 
+def _load_google_token_from_secrets() -> None:
+    """Fetch the Google OAuth token from AWS Secrets Manager into tmpfs.
+
+    Runs only when BILLY_GOOGLE_SECRET_ID is set and GOOGLE_OAUTH_CREDENTIALS
+    isn't already pointing at a file. /dev/shm is RAM-backed, so the token
+    exists only while the Pi is powered on.
+    """
+    import boto3
+
+    secret_id = os.environ["BILLY_GOOGLE_SECRET_ID"]
+    token = boto3.client("secretsmanager").get_secret_value(SecretId=secret_id)
+    path = "/dev/shm/billy_google_token.json" if os.path.isdir("/dev/shm") else "/tmp/billy_google_token.json"
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(token["SecretString"])
+    os.environ["GOOGLE_OAUTH_CREDENTIALS"] = path
+
+
 def billy_tools() -> list:
     """All tools Billy should carry, based on what's configured."""
     tools = [get_weather, get_news_headlines]
+    if os.environ.get("BILLY_GOOGLE_SECRET_ID") and not os.environ.get("GOOGLE_OAUTH_CREDENTIALS"):
+        _load_google_token_from_secrets()
     if os.environ.get("GOOGLE_OAUTH_CREDENTIALS"):
         from strands_google import use_google
 
