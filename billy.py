@@ -3,9 +3,11 @@
 Architecture:
     BidiAgent (Strands)  <-->  Nova 2 Sonic on Amazon Bedrock
         |
-        +-- GatedMic       (subclass of _BidiAudioInput)
-        |       sends silence to model whenever Billy is speaking,
-        |       so he can't hear his own voice through the speaker
+        +-- PrivacyGatedMic (subclass of _BidiAudioInput)
+        |       sends silence to the model unless local VAD hears real
+        |       speech (privacy: ambient audio never leaves the house),
+        |       and whenever Billy is speaking, so he can't hear his
+        |       own voice through the speaker
         |
         +-- BillyBody      (subclass of _BidiAudioOutput)
                 plays Nova's audio AND measures RMS in the PyAudio
