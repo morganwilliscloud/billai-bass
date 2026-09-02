@@ -682,17 +682,17 @@ Weather comes from [Open-Meteo](https://open-meteo.com/) — no API key, no acco
 **Calendar and email are optional** and use the [strands-google](https://github.com/cagataycali/strands-google) community integration (one tool, 200+ Google APIs). One-time setup, easiest done on your laptop:
 
 1. `pip install strands-google` (both laptop and Pi).
-2. In [Google Cloud Console](https://console.cloud.google.com/): create a project, enable the **Gmail API** and **Google Calendar API**, and create an **OAuth client ID** of type *Desktop app*. Download the client JSON and save it as `gmail_credentials.json` next to `google_setup.py`.
+2. In [Google Cloud Console](https://console.cloud.google.com/): create a project, enable the **Gmail API** and **Google Calendar API**, and create an **OAuth client ID** of type *Desktop app*. Download the client JSON and save it somewhere safe outside this repo — credentials never belong in a git working tree.
 3. On your laptop, run this repo's setup script — NOT strands-google's built-in runner, whose default scopes include full Gmail send/modify, Drive, Photos, and Contacts. `google_setup.py` requests exactly two **read-only** scopes (Gmail + Calendar); Billy has no business sending email as you:
    ```bash
-   python google_setup.py
+   python google_setup.py path/to/your-downloaded-client.json
    ```
-   A browser opens; approve access. This writes `gmail_token.json`.
+   A browser opens; approve access. This writes `gmail_token.json` next to your client file.
 4. Get the token to the fish — pick one:
-   - **Simple**: copy `gmail_token.json` to the Pi and `export GOOGLE_OAUTH_CREDENTIALS=/home/morgan/gmail_token.json`.
+   - **Simple**: copy the `gmail_token.json` it wrote to the Pi (again, outside any git repo) and point `GOOGLE_OAUTH_CREDENTIALS` at wherever you put it.
    - **Nicer (recommended if you did the IoT credentials appendix)**: keep the token off the SD card entirely by storing it in AWS Secrets Manager (~$0.40/month):
      ```bash
-     python google_setup.py --secret-id billy/google-token
+     python google_setup.py path/to/your-downloaded-client.json --secret-id billy/google-token
      ```
      Then on the Pi just `export BILLY_GOOGLE_SECRET_ID=billy/google-token`. At startup Billy fetches the token into `/dev/shm` (RAM — gone at power-off). To grant read access, redeploy the identity stack with the secret's ARN (the script prints the exact command) — `billy-iot.yaml` takes it as the optional `GoogleTokenSecretArn` parameter, so the fish's permissions stay template-managed and least-privilege.
 
