@@ -1,10 +1,9 @@
 """BillAI Bass — alternate brain: OpenAI Realtime instead of Nova 2 Sonic.
 
 Same fish, same motors, same tools — different model provider. Strands'
-BidiAgent is provider-agnostic, so the swap is the model constructor, a
-voice, and an accent line in the prompt. Everything below the model is
-identical in spirit to billy.py; read that file's docstring for the
-architecture.
+BidiAgent is provider-agnostic, so the swap is the model constructor
+and a voice. Everything below the model is identical in spirit to
+billy.py; read that file's docstring for the architecture.
 
 Differences from billy.py you should know about:
 
