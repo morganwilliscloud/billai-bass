@@ -3,6 +3,20 @@ Description: >
   Billy Bass device identity: lets a fish with an X.509 certificate exchange
   it for temporary AWS credentials that can do exactly one thing - talk to
   Nova 2 Sonic on Amazon Bedrock. Deploy in us-east-1.
+  Optionally also grants read access to one Secrets Manager secret holding
+  Billy's Google OAuth token (see the "Give Billy tools" README section).
+
+Parameters:
+  GoogleTokenSecretArn:
+    Type: String
+    Default: ''
+    Description: >
+      Optional. Full ARN of the Secrets Manager secret holding Billy's
+      Google OAuth token (google_setup.py prints it). Leave empty if you
+      are not using the Google tools.
+
+Conditions:
+  HasGoogleTokenSecret: !Not [!Equals [!Ref GoogleTokenSecretArn, '']]
 
 Resources:
 
@@ -36,6 +50,18 @@ Resources:
                 Effect: Allow
                 Action: bedrock:InvokeModelWithBidirectionalStream
                 Resource: !Sub arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.nova-2-sonic-v1:0
+        # One secret, read-only, and only when the parameter is set.
+        - !If
+          - HasGoogleTokenSecret
+          - PolicyName: billy-google-token-read
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Sid: BillyReadsGoogleToken
+                  Effect: Allow
+                  Action: secretsmanager:GetSecretValue
+                  Resource: !Ref GoogleTokenSecretArn
+          - !Ref AWS::NoValue
 
   # The role alias is what devices reference when requesting credentials.
   # Indirection on purpose: you can rotate/replace the role behind the alias

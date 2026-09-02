@@ -56,16 +56,25 @@ def main():
         token_json = f.read()
     sm = boto3.client("secretsmanager")
     try:
-        sm.create_secret(Name=secret_id, SecretString=token_json)
+        resp = sm.create_secret(Name=secret_id, SecretString=token_json)
         print(f"Created secret {secret_id}")
     except sm.exceptions.ResourceExistsException:
-        sm.put_secret_value(SecretId=secret_id, SecretString=token_json)
+        resp = sm.put_secret_value(SecretId=secret_id, SecretString=token_json)
         print(f"Updated existing secret {secret_id}")
+    arn = resp["ARN"]
     os.remove(TOKEN_FILE)
     print("Local token file deleted. On the Pi, set:")
     print(f"  export BILLY_GOOGLE_SECRET_ID={secret_id}")
-    print("and make sure the Pi's IAM identity is allowed "
-          "secretsmanager:GetSecretValue on that secret.")
+    print("\nThen grant the fish read access. If you use the iot-identity")
+    print("setup, redeploy the stack with the secret's ARN - the template")
+    print("handles the rest:")
+    print(f"  aws cloudformation deploy --region us-east-1 \\\n"
+          f"    --stack-name billy-bass-identity \\\n"
+          f"    --template-file iot-identity/billy-iot.yaml \\\n"
+          f"    --parameter-overrides GoogleTokenSecretArn={arn} \\\n"
+          f"    --capabilities CAPABILITY_NAMED_IAM")
+    print("\nOtherwise, allow secretsmanager:GetSecretValue on this ARN for")
+    print(f"whatever IAM identity the Pi uses:\n  {arn}")
 
 
 if __name__ == "__main__":

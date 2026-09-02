@@ -694,7 +694,7 @@ Weather comes from [Open-Meteo](https://open-meteo.com/) — no API key, no acco
      ```bash
      python google_setup.py --secret-id billy/google-token
      ```
-     Then on the Pi just `export BILLY_GOOGLE_SECRET_ID=billy/google-token`. At startup Billy fetches the token into `/dev/shm` (RAM — gone at power-off). Add `secretsmanager:GetSecretValue` on that one secret's ARN to the Pi's IAM policy.
+     Then on the Pi just `export BILLY_GOOGLE_SECRET_ID=billy/google-token`. At startup Billy fetches the token into `/dev/shm` (RAM — gone at power-off). To grant read access, redeploy the identity stack with the secret's ARN (the script prints the exact command) — `billy-iot.yaml` takes it as the optional `GoogleTokenSecretArn` parameter, so the fish's permissions stay template-managed and least-privilege.
 
 Real talk on what Secrets Manager buys you: the Pi's AWS identity is still on the SD card, so a stolen card can still fetch the secret — this isn't magic. What you get is no Google credential at rest on the device, one place to rotate or revoke, and a CloudTrail log of every fetch. Your ultimate kill switch either way is [myaccount.google.com/permissions](https://myaccount.google.com/permissions) — revoke the app there and every copy of the token dies instantly.
 

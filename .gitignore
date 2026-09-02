@@ -21,3 +21,5 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+gmail_credentials.json
+gmail_token.json
