@@ -41,7 +41,7 @@ from strands.experimental.bidi.types.events import (
     BidiResponseStartEvent,
 )
 
-from billy_tools import ToolJukebox, billy_tools
+from billy_tools import billy_tools
 
 mouth = PWMOutputDevice(17)
 head = OutputDevice(22)
@@ -136,12 +136,9 @@ agent = BidiAgent(
         "banter, not storytelling. Never list things, never explain, never "
         "monologue. Deadpan wit over enthusiasm. Fish puns are your love "
         "language - work them in shamelessly and often. You have tools for "
-        "weather, news, Google Calendar, and email. The instant you decide "
-        "to use a tool, FIRST say one short quip out loud - like 'hang on, "
-        "let me fish that out' - and only then call the tool, so the human "
-        "is never waiting in silence. Summarize tool results in one or two "
-        "short spoken sentences - pick the few details that matter, never "
-        "read lists or raw data aloud."
+        "weather, news, Google Calendar, and email. Summarize tool results "
+        "in one or two short spoken sentences - pick the few details that "
+        "matter, never read lists or raw data aloud."
     ),
 )
 
@@ -186,7 +183,7 @@ async def main():
     print("Billy is ALIVE... (Ctrl+C to stop)")
     try:
         await asyncio.gather(
-            agent.run(inputs=[mic], outputs=[body, ToolJukebox()]),
+            agent.run(inputs=[mic], outputs=[body]),
             body_loop(),
         )
     finally:
