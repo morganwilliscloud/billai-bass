@@ -11,19 +11,28 @@ voice agent: long tool calls mean a fish staring at you in silence.
                         BILLY_NEWS_FEEDS (comma-separated URLs),
                         defaults to BBC and NPR.
 
-    use_google          Calendar and Gmail via the strands-google
-                        community integration. Enabled when either
-                        GOOGLE_OAUTH_CREDENTIALS (token file path) or
-                        BILLY_GOOGLE_SECRET_ID (AWS Secrets Manager
-                        secret holding the token, fetched into tmpfs at
-                        startup so it never touches the SD card) is set.
-                        See README and google_setup.py for the one-time
-                        OAuth setup. Keep the scopes read-only; Billy
-                        has no business sending email.
+    check_calendar      Today's Google Calendar events.
+    check_recent_email  Latest messages from the PRIMARY inbox tab only
+                        (no promotions/social).
+
+    Both Google tools call the API directly with a client that's built
+    once and cached. (The generic use_google tool fetches Google's
+    Discovery schema over HTTP on every call - several seconds of dead
+    fish per question.) Enabled when either GOOGLE_OAUTH_CREDENTIALS
+    (token file path) or BILLY_GOOGLE_SECRET_ID (AWS Secrets Manager
+    secret holding the token, fetched into tmpfs at startup so it never
+    touches the SD card) is set. See README and google_setup.py for the
+    one-time OAuth setup. Scopes are read-only; Billy has no business
+    sending email.
+
+Also here: ToolJukebox, an output handler that plays hold music while
+Billy waits on a tool (BILLY_HOLD_MUSIC = path to an audio file).
 """
 
 import json
 import os
+import subprocess
+import sys
 import urllib.request
 
 from strands import tool
@@ -95,6 +104,143 @@ def get_news_headlines(limit: int = 6) -> dict:
     return {"headlines": headlines[:limit]}
 
 
+_google_services: dict = {}
+
+
+def _google_service(name: str, version: str):
+    """Build a Google API client once and cache it (Discovery is slow)."""
+    key = (name, version)
+    if key not in _google_services:
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+
+        creds = Credentials.from_authorized_user_file(
+            os.environ["GOOGLE_OAUTH_CREDENTIALS"]
+        )
+        _google_services[key] = build(name, version, credentials=creds)
+    return _google_services[key]
+
+
+@tool
+def check_calendar() -> dict:
+    """Get today's events from the user's Google Calendar."""
+    from datetime import datetime, time, timedelta
+
+    now = datetime.now().astimezone()
+    start = datetime.combine(now.date(), time.min).astimezone()
+    end = start + timedelta(days=1)
+    events = (
+        _google_service("calendar", "v3")
+        .events()
+        .list(
+            calendarId="primary",
+            timeMin=start.isoformat(),
+            timeMax=end.isoformat(),
+            singleEvents=True,
+            orderBy="startTime",
+            maxResults=15,
+        )
+        .execute()
+    )
+    return {
+        "today": [
+            {
+                "title": e.get("summary", "(no title)"),
+                "start": e["start"].get("dateTime", e["start"].get("date")),
+            }
+            for e in events.get("items", [])
+        ]
+    }
+
+
+@tool
+def check_recent_email(limit: int = 5) -> dict:
+    """Get the latest emails from the user's primary inbox.
+
+    Only the primary tab - never promotions or social.
+
+    Args:
+        limit: Maximum number of emails to return.
+    """
+    gmail = _google_service("gmail", "v1")
+    listing = (
+        gmail.users()
+        .messages()
+        .list(userId="me", q="category:primary", maxResults=limit)
+        .execute()
+    )
+    emails = []
+    for m in listing.get("messages", []):
+        msg = (
+            gmail.users()
+            .messages()
+            .get(
+                userId="me",
+                id=m["id"],
+                format="metadata",
+                metadataHeaders=["From", "Subject"],
+            )
+            .execute()
+        )
+        headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
+        emails.append(
+            {
+                "from": headers.get("From", ""),
+                "subject": headers.get("Subject", ""),
+                "snippet": msg.get("snippet", "")[:120],
+                "unread": "UNREAD" in msg.get("labelIds", []),
+            }
+        )
+    return {"primary_inbox": emails}
+
+
+class ToolJukebox:
+    """Plays hold music while Billy waits on a tool.
+
+    Pass as an extra output to agent.run(). Watches the event stream by
+    type name (version-tolerant): music starts when a tool call begins
+    and stops the moment a result lands or Billy starts talking again.
+    Needs BILLY_HOLD_MUSIC pointing at an audio file; without it, this
+    does nothing. Keep the clip QUIET - it plays outside the agent's
+    audio path, so echo cancellation can't subtract it from the mic.
+    """
+
+    _START = {"ToolUseStreamEvent"}
+    _STOP = {
+        "ToolResultEvent",
+        "ToolResultMessageEvent",
+        "BidiAudioStreamEvent",
+        "BidiInterruptionEvent",
+        "BidiResponseCompleteEvent",
+    }
+
+    def __init__(self, song: str | None = None):
+        self._song = song or os.environ.get("BILLY_HOLD_MUSIC")
+        self._proc: subprocess.Popen | None = None
+
+    async def __call__(self, event) -> None:
+        name = type(event).__name__
+        if name in self._START:
+            self._start()
+        elif name in self._STOP:
+            self._stop()
+
+    def _start(self) -> None:
+        if not self._song or (self._proc and self._proc.poll() is None):
+            return
+        player = "afplay" if sys.platform == "darwin" else "aplay"
+        self._proc = subprocess.Popen(
+            [player, self._song],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    def _stop(self) -> None:
+        if self._proc and self._proc.poll() is None:
+            self._proc.terminate()
+        self._proc = None
+
+
 def _load_google_token_from_secrets() -> None:
     """Fetch the Google OAuth token from AWS Secrets Manager into tmpfs.
 
@@ -119,7 +265,13 @@ def billy_tools() -> list:
     if os.environ.get("BILLY_GOOGLE_SECRET_ID") and not os.environ.get("GOOGLE_OAUTH_CREDENTIALS"):
         _load_google_token_from_secrets()
     if os.environ.get("GOOGLE_OAUTH_CREDENTIALS"):
-        from strands_google import use_google
+        tools.extend([check_calendar, check_recent_email])
+        # The universal 200-API tool is off by default: it re-fetches
+        # Google's Discovery schema every call (slow) and improvises its
+        # own Gmail queries (reads your promotions tab). Opt back in if
+        # you want Billy to reach APIs the focused tools don't cover.
+        if os.environ.get("BILLY_UNIVERSAL_GOOGLE"):
+            from strands_google import use_google
 
-        tools.append(use_google)
+            tools.append(use_google)
     return tools
