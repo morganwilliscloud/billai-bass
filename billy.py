@@ -41,7 +41,7 @@ from strands.experimental.bidi.types.events import (
     BidiResponseStartEvent,
 )
 
-from billy_tools import billy_tools, song_now_playing
+from billy_tools import billy_tools
 
 mouth = PWMOutputDevice(17)
 head = OutputDevice(22)
@@ -100,10 +100,7 @@ class GatedMic(_BidiAudioInput):
 
     async def __call__(self):
         event = await super().__call__()
-        # Gate while Billy speaks, and for the whole song when he sings -
-        # the song plays outside the agent's audio path, so without this
-        # Nova would hear it and try to converse with the music.
-        if song_now_playing() or time.monotonic() - self._body.last_loud < MIC_GATE_HOLDOVER:
+        if time.monotonic() - self._body.last_loud < MIC_GATE_HOLDOVER:
             raw = base64.b64decode(event["audio"])
             silence = base64.b64encode(b"\x00" * len(raw)).decode("utf-8")
             return BidiAudioInputEvent(
@@ -139,9 +136,7 @@ agent = BidiAgent(
         "banter, not storytelling. Never list things, never explain, never "
         "monologue. Deadpan wit over enthusiasm. Fish puns are your love "
         "language - work them in shamelessly and often. You have tools for "
-        "weather, news, Google Calendar, email, and playing your world-"
-        "famous song (use play_song whenever anyone asks you to sing or "
-        "perform - never try to sing it yourself). Summarize tool results "
+        "weather, news, Google Calendar, and email. Summarize tool results "
         "in one or two short spoken sentences - pick the few details that "
         "matter, never read lists or raw data aloud."
     ),
@@ -157,15 +152,6 @@ async def body_loop():
     smoothed = 0.0
     while True:
         now = time.monotonic()
-
-        # Song mode: the audio isn't in the agent's stream, so there's no
-        # RMS to follow - chomp the mouth like the original toy instead.
-        if song_now_playing():
-            head.on()
-            tail.off()
-            mouth.value = 0.9 if int(now * 3) % 2 else 0.0
-            await asyncio.sleep(0.05)
-            continue
 
         smoothed = 0.6 * smoothed + 0.4 * body.level
         if smoothed > MOUTH_OPEN:
