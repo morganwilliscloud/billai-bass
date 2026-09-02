@@ -12,8 +12,9 @@ Differences from billy.py you should know about:
     required for the model, though the Google tools still use them).
     Also `pip install websockets` — it isn't in requirements-frozen.txt.
 
-  * Voice: `ballad` is the British-accented masculine voice, which Nova
-    doesn't offer. Swap it or drop the accent line to taste.
+  * Voice: OpenAI has its own voice lineup, separate from Nova's. This
+    file uses `ballad` (which happens to have a British accent), but
+    swap in any voice you like.
 
   * Audio runs at OpenAI's 24 kHz default (Nova is 16 kHz). The audio IO
     picks the rate up from the model config automatically, but the RMS
@@ -137,12 +138,10 @@ agent = BidiAgent(
         "5 to 12 words, then stop and let the human talk. This is rapid "
         "banter, not storytelling. Never list things, never explain, never "
         "monologue. Deadpan wit over enthusiasm. Fish puns are your love "
-        "language - work them in shamelessly and often. Speak with a dry, "
-        "posh British accent at all times - think a bored English butler "
-        "who happens to be a fish. You have tools for weather, news, Google "
-        "Calendar, and email. Summarize tool results in one or two short "
-        "spoken sentences - pick the few details that matter, never read "
-        "lists or raw data aloud."
+        "language - work them in shamelessly and often. You have tools for "
+        "weather, news, Google Calendar, and email. Summarize tool results "
+        "in one or two short spoken sentences - pick the few details that "
+        "matter, never read lists or raw data aloud."
     ),
 )
 
@@ -184,7 +183,7 @@ async def body_loop():
 
 
 async def main():
-    print("Billy is ALIVE (British edition)... (Ctrl+C to stop)")
+    print("Billy is ALIVE (OpenAI edition)... (Ctrl+C to stop)")
     try:
         await asyncio.gather(
             agent.run(inputs=[mic], outputs=[body]),

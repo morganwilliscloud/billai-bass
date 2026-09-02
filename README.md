@@ -17,7 +17,7 @@ No robotics experience needed. No prior soldering experience needed. The person 
 |---|---|
 | `README.md` | This guide — start here, work top to bottom |
 | `billy.py` | The final working Python — the talking fish |
-| `billy_openai.py` | Alternate brain: the same fish on OpenAI Realtime (British-accented voice) instead of Nova 2 Sonic |
+| `billy_openai.py` | Alternate brain: the same fish on OpenAI Realtime instead of Nova 2 Sonic |
 | `billy_tools.py` | Billy's assistant tools — weather, news headlines, and (optional) Google Calendar + Gmail |
 | `google_setup.py` | One-time Google OAuth setup with read-only scopes; can stash the token in AWS Secrets Manager |
 | `motors.py` | Standalone motor test rig — run this before `billy.py` to verify wiring |
@@ -660,9 +660,9 @@ Talk to your fish. Expected choreography: head rises as Billy answers → mouth 
 - **Wake word**: Porcupine ("Hey Billy") runs locally on the Pi — see the billy-b-assistant project for the pattern.
 - **Reassembly**: cut a notch in the backplate for cables, mount the mic near the original sensor hole, velcro the Pi to the plaque.
 
-## 🇬🇧 Alternate implementation: OpenAI Realtime
+## 🔁 Alternate implementation: OpenAI Realtime
 
-Strands' `BidiAgent` is provider-agnostic, so the same fish runs on OpenAI's Realtime API instead of Nova 2 Sonic — `billy_openai.py` is that build. The diff against `billy.py` is the model constructor, a voice, and one line of prompt. Why you might want it: OpenAI's `ballad` voice has a British accent, and Nova currently has no British masculine voice. A fish that sounds like a bored English butler is a legitimate lifestyle choice.
+Strands' `BidiAgent` is provider-agnostic, so the same fish runs on OpenAI's Realtime API instead of Nova 2 Sonic — `billy_openai.py` is that build. The diff against `billy.py` is essentially the model constructor and a voice. OpenAI also brings its own voice lineup — there's a British-accented one (`ballad`, used in this file), among others — so pick whichever suits your fish.
 
 ```bash
 pip install websockets            # in the venv; not in requirements-frozen.txt
