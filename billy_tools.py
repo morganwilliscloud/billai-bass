@@ -29,10 +29,12 @@ Also here: ToolJukebox, an output handler that plays hold music while
 Billy waits on a tool (BILLY_HOLD_MUSIC = path to an audio file).
 """
 
+import asyncio
 import json
 import os
 import subprocess
 import sys
+import time
 import urllib.request
 
 from strands import tool
@@ -195,35 +197,51 @@ def check_recent_email(limit: int = 5) -> dict:
 
 
 class ToolJukebox:
-    """Plays hold music while Billy waits on a tool.
+    """Plays hold music, but only when a tool is genuinely keeping Billy busy.
 
     Pass as an extra output to agent.run(). Watches the event stream by
-    type name (version-tolerant): music starts when a tool call begins
-    and stops the moment a result lands or Billy starts talking again.
-    Needs BILLY_HOLD_MUSIC pointing at an audio file; without it, this
-    does nothing. Keep the clip QUIET - it plays outside the agent's
-    audio path, so echo cancellation can't subtract it from the mic.
+    type name (version-tolerant). Music starts only after a tool call has
+    been pending for GRACE_S seconds AND Billy hasn't spoken for QUIET_S -
+    so his "let me fish that out" quip always plays first, and fast tools
+    (under about a second) never trigger music at all. It stops the moment
+    Billy's voice comes back. Needs BILLY_HOLD_MUSIC pointing at an audio
+    file; without it, this does nothing. Keep the clip QUIET - it plays
+    outside the agent's audio path, so echo cancellation can't subtract
+    it from the mic.
     """
 
-    _START = {"ToolUseStreamEvent"}
-    _STOP = {
-        "ToolResultEvent",
-        "ToolResultMessageEvent",
-        "BidiAudioStreamEvent",
-        "BidiInterruptionEvent",
-        "BidiResponseCompleteEvent",
-    }
+    GRACE_S = 1.2   # tool must be pending this long before music starts
+    QUIET_S = 0.6   # and Billy's voice must have been quiet this long
 
     def __init__(self, song: str | None = None):
         self._song = song or os.environ.get("BILLY_HOLD_MUSIC")
         self._proc: subprocess.Popen | None = None
+        self._pending = 0
+        self._last_audio = 0.0
+        self._dj_task: asyncio.Task | None = None
 
     async def __call__(self, event) -> None:
         name = type(event).__name__
-        if name in self._START:
-            self._start()
-        elif name in self._STOP:
+        if name == "ToolUseStreamEvent":
+            self._pending += 1
+            if self._song and (self._dj_task is None or self._dj_task.done()):
+                self._dj_task = asyncio.create_task(self._dj())
+        elif name in ("ToolResultEvent", "ToolResultMessageEvent"):
+            self._pending = max(0, self._pending - 1)
+            if self._pending == 0:
+                self._stop()
+        elif name in ("BidiAudioStreamEvent", "BidiInterruptionEvent"):
+            self._last_audio = time.monotonic()
             self._stop()
+
+    async def _dj(self) -> None:
+        earliest = time.monotonic() + self.GRACE_S
+        while self._pending > 0:
+            now = time.monotonic()
+            if now >= earliest and now - self._last_audio >= self.QUIET_S:
+                self._start()
+            await asyncio.sleep(0.2)
+        self._stop()
 
     def _start(self) -> None:
         if not self._song or (self._proc and self._proc.poll() is None):
