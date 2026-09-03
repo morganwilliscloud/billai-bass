@@ -48,7 +48,13 @@ Resources:
             Statement:
               - Sid: BillyTalksToNovaSonicOnly
                 Effect: Allow
-                Action: bedrock:InvokeModelWithBidirectionalStream
+                # Nova 2 Sonic's bidirectional stream authorizes BOTH actions
+                # in-band on the first stream event: InvokeModel as well as
+                # InvokeModelWithBidirectionalStream. Granting only the latter
+                # opens the stream but then fails with AccessDeniedException.
+                Action:
+                  - bedrock:InvokeModelWithBidirectionalStream
+                  - bedrock:InvokeModel
                 Resource: !Sub arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.nova-2-sonic-v1:0
         # One secret, read-only, and only when the parameter is set.
         - !If
