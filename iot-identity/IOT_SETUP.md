@@ -71,7 +71,6 @@ You now have 4 files that matter: `certificate.pem`, `private.key`, `AmazonRootC
 ssh yourusername@billy.local "mkdir -p ~/billy/identity"
 scp certificate.pem private.key AmazonRootCA1.pem endpoint.txt \
   yourusername@billy.local:~/billy/identity/
-scp fish_credentials.py yourusername@billy.local:~/billy/
 
 # Lock down the private key, then shred your laptop's copy:
 ssh yourusername@billy.local "chmod 600 ~/billy/identity/private.key"
@@ -80,33 +79,11 @@ rm private.key
 
 That last `rm` matters: after it, the only copy of the fish's private key in the universe lives on the fish. That's the point.
 
-## Step 4 — Point Billy at his new identity (1 edit)
+## Step 4 — Nothing to edit
 
-In your `billy_final.py` on the Pi, add one import and one argument:
+`billy.py` already looks for the identity you just installed. On startup it checks for `~/billy/identity/endpoint.txt`; if it's there, Billy authenticates with the certificate, and if it isn't, he falls back to the ordinary AWS credential chain (the access key). So the same `billy.py` works both ways — installing the four files in Step 3 is all it takes to flip him over.
 
-```python
-from fish_credentials import fish_boto_session
-```
-
-and change the model construction to:
-
-```python
-model = BidiNovaSonicModel(
-    model_id="amazon.nova-2-sonic-v1:0",
-    provider_config={
-        "audio": {
-            "input_rate": 16000,
-            "output_rate": 16000,
-            "voice": "matthew",
-            "channels": 1,
-            "format": "pcm",
-        }
-    },
-    client_config={"boto_session": fish_boto_session()},
-)
-```
-
-(`fish_credentials.py` must sit in the same directory you run from — `~/billy/`. Credentials auto-refresh hourly, so always-on fish keep talking.)
+(Under the hood it imports `fish_credentials.py` from this `iot-identity/` folder in the repo, so there's nothing to copy. Credentials auto-refresh hourly, so always-on fish keep talking.)
 
 ## Step 5 — Verify, then revoke the old key
 

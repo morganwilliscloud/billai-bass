@@ -29,9 +29,11 @@ in requirements-frozen.txt; a future SDK release may break this.
 import asyncio
 import base64
 import math
+import sys
 import time
 import webrtcvad
 from array import array
+from pathlib import Path
 
 from gpiozero import OutputDevice, PWMOutputDevice
 from strands.experimental.bidi import BidiAgent, BidiAudioIO
@@ -105,7 +107,10 @@ class PrivacyGatedMic(_BidiAudioInput):
         self._body = body
         self._vad = webrtcvad.Vad(vad_aggressiveness)
         self._timeout = timeout
-        self._buffer = b""
+        # NB: the parent (_BidiAudioInput) owns self._buffer as its audio
+        # buffer. Use a distinct name for the VAD frame accumulator so we
+        # don't clobber it, or the mic can't start / read audio.
+        self._vad_buffer = b""
         self._last_speech_time = 0.0
         self._is_listening = False
 
@@ -118,13 +123,13 @@ class PrivacyGatedMic(_BidiAudioInput):
             return self._make_silence_event(event, len(raw_audio))
 
         # 2. Run VAD analysis on the incoming chunk
-        self._buffer += raw_audio
+        self._vad_buffer += raw_audio
         frame_size = 960  # 30ms frame at 16kHz 16-bit mono
 
         has_speech = False
-        while len(self._buffer) >= frame_size:
-            frame = self._buffer[:frame_size]
-            self._buffer = self._buffer[frame_size:]
+        while len(self._vad_buffer) >= frame_size:
+            frame = self._vad_buffer[:frame_size]
+            self._vad_buffer = self._vad_buffer[frame_size:]
 
             # webrtcvad returns True if speech is detected
             if self._vad.is_speech(frame, 16000):
@@ -157,6 +162,37 @@ class PrivacyGatedMic(_BidiAudioInput):
         )
 
 
+def _model_client_config():
+    """Use the fish's IoT device certificate for AWS auth if it's installed.
+
+    The optional iot-identity/ setup (see iot-identity/IOT_SETUP.md) gives the
+    fish short-lived, auto-refreshing credentials scoped to just Nova Sonic, so
+    no long-lived AWS key ever lives on the SD card. We detect it by the
+    presence of the identity files; if they're there, the model gets a boto
+    session backed by the certificate. If they're absent, we return an empty
+    config and the model falls back to the default AWS credential chain (an
+    access key in ~/.aws, environment variables, etc.), so non-IoT builds are
+    unaffected. A real failure (revoked cert, bad endpoint) is left to raise.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "iot-identity"))
+    try:
+        import fish_credentials
+    except ImportError:
+        return {}
+    if not (fish_credentials.IDENTITY_DIR / "endpoint.txt").exists():
+        return {}
+    return {"boto_session": fish_credentials.fish_boto_session()}
+
+
+_client_config = _model_client_config()
+if "boto_session" in _client_config:
+    # Make the fish's certificate session the process-wide default too, so the
+    # Google tools' Secrets Manager call (billy_tools) authenticates as the
+    # fish rather than groping for a long-lived key that IoT builds don't have.
+    import boto3
+
+    boto3.DEFAULT_SESSION = _client_config["boto_session"]
+
 model = BidiNovaSonicModel(
     model_id="amazon.nova-2-sonic-v1:0",
     provider_config={
@@ -169,6 +205,7 @@ model = BidiNovaSonicModel(
         },
         "turn_detection": {"endpointingSensitivity": "LOW"},
     },
+    client_config=_client_config,
 )
 
 agent = BidiAgent(
