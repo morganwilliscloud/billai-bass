@@ -1,3 +1,6 @@
+# Your filled-in config (location, secret names) — ships only as billy.env.example
+billy.env
+
 # Never commit AWS credentials or device certs
 .aws/
 *.pem

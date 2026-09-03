@@ -35,6 +35,7 @@ import webrtcvad
 from array import array
 from pathlib import Path
 
+from dotenv import load_dotenv
 from gpiozero import OutputDevice, PWMOutputDevice
 from strands.experimental.bidi import BidiAgent, BidiAudioIO
 from strands.experimental.bidi.io.audio import _BidiAudioInput, _BidiAudioOutput
@@ -47,6 +48,10 @@ from strands.experimental.bidi.types.events import (
 )
 
 from billy_tools import billy_tools
+
+# Load config (BILLY_GOOGLE_SECRET_ID, BILLY_LATITUDE, etc.) from billy.env
+# next to this script if it exists. Real environment variables still win.
+load_dotenv(Path(__file__).resolve().parent / "billy.env")
 
 mouth = PWMOutputDevice(17)
 head = OutputDevice(22)

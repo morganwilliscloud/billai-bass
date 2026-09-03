@@ -682,13 +682,22 @@ Two honest trade-offs: OpenAI streams audio at 24 kHz, so the RMS tuning knobs m
 pip install feedparser
 ```
 
-Then tell Billy where he lives and what he reads (add to `~/.bashrc`, or your systemd unit if you did the run-on-boot step — plain `export` in a terminal won't survive a reboot, same gotcha as §1.6):
+Then tell Billy where he lives and what he reads. Billy reads his settings from a `billy.env` file next to `billy.py`, so they survive reboots without touching `~/.bashrc` or a systemd unit. Copy the template and fill in your own values:
 
 ```bash
-export BILLY_LATITUDE=47.61        # defaults to Seattle if unset
-export BILLY_LONGITUDE=-122.33
-export BILLY_NEWS_FEEDS="https://feeds.bbci.co.uk/news/rss.xml,https://feeds.npr.org/1001/rss.xml"
+cp billy.env.example billy.env
+nano billy.env        # replace each <PLACEHOLDER>
 ```
+
+Every variable is optional — leave one out and Billy uses the default (Seattle location, BBC + NPR feeds). `billy.env` is gitignored; only `billy.env.example` ships:
+
+```bash
+BILLY_LATITUDE=<your-latitude>
+BILLY_LONGITUDE=<your-longitude>
+BILLY_NEWS_FEEDS=<comma-separated-rss-feed-urls>
+```
+
+(A real environment variable, if you `export` one, still overrides the file.)
 
 Weather comes from [Open-Meteo](https://open-meteo.com/) — no API key, no account. News is plain RSS; any feed URLs work.
 
@@ -702,12 +711,12 @@ Weather comes from [Open-Meteo](https://open-meteo.com/) — no API key, no acco
    ```
    A browser opens; approve access. This writes `gmail_token.json` next to your client file.
 4. Get the token to the fish — pick one:
-   - **Simple**: copy the `gmail_token.json` it wrote to the Pi (again, outside any git repo) and point `GOOGLE_OAUTH_CREDENTIALS` at wherever you put it.
+   - **Simple**: copy the `gmail_token.json` it wrote to the Pi (again, outside any git repo) and add `GOOGLE_OAUTH_CREDENTIALS=/path/to/gmail_token.json` to your `billy.env`.
    - **Nicer (recommended if you did the IoT credentials appendix)**: keep the token off the SD card entirely by storing it in AWS Secrets Manager (~$0.40/month):
      ```bash
      python google_setup.py path/to/your-downloaded-client.json --secret-id billy/google-token
      ```
-     Then on the Pi just `export BILLY_GOOGLE_SECRET_ID=billy/google-token`. At startup Billy fetches the token into `/dev/shm` (RAM — gone at power-off). To grant read access, redeploy the identity stack with the secret's ARN (the script prints the exact command) — `billy-iot.yaml` takes it as the optional `GoogleTokenSecretArn` parameter, so the fish's permissions stay template-managed and least-privilege.
+     Then on the Pi, set `BILLY_GOOGLE_SECRET_ID=billy/google-token` in your `billy.env`. At startup Billy fetches the token into `/dev/shm` (RAM — gone at power-off). To grant read access, redeploy the identity stack with the secret's ARN (the script prints the exact command) — `billy-iot.yaml` takes it as the optional `GoogleTokenSecretArn` parameter, so the fish's permissions stay template-managed and least-privilege.
 
 Real talk on what Secrets Manager buys you: the Pi's AWS identity is still on the SD card, so a stolen card can still fetch the secret — this isn't magic. What you get is no Google credential at rest on the device, one place to rotate or revoke, and a CloudTrail log of every fetch. Your ultimate kill switch either way is [myaccount.google.com/permissions](https://myaccount.google.com/permissions) — revoke the app there and every copy of the token dies instantly.
 

@@ -30,7 +30,9 @@ import base64
 import math
 import time
 from array import array
+from pathlib import Path
 
+from dotenv import load_dotenv
 from gpiozero import OutputDevice, PWMOutputDevice
 from strands.experimental.bidi import BidiAgent, BidiAudioIO
 from strands.experimental.bidi.io.audio import _BidiAudioInput, _BidiAudioOutput
@@ -43,6 +45,10 @@ from strands.experimental.bidi.types.events import (
 )
 
 from billy_tools import billy_tools
+
+# Load config (OPENAI_API_KEY, BILLY_GOOGLE_SECRET_ID, etc.) from billy.env
+# next to this script if it exists. Real environment variables still win.
+load_dotenv(Path(__file__).resolve().parent / "billy.env")
 
 mouth = PWMOutputDevice(17)
 head = OutputDevice(22)
