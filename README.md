@@ -1,11 +1,11 @@
 # 🐟 BillAI Bass Builder Guide
-### Powered by Strands Agents Bidirectional Streaming + Amazon Nova 2 Sonic
+### Powered by Strands Agents Bidirectional Streaming + Amazon Nova 2.5 Sonic
 
 
 https://github.com/user-attachments/assets/02e84cd4-72e2-4b01-8b80-c83e910037e6
 
 
-Turn a Big Mouth Billy Bass into a real-time voice assistant: you talk, the fish talks back — head swiveling, mouth lip-syncing to its own voice, tail flapping for emphasis. The fish runs a [Strands Agents](https://strandsagents.com) **bidirectional streaming agent** (`BidiAgent`) on a Raspberry Pi 5, streaming live audio to and from **Amazon Nova 2 Sonic** on Amazon Bedrock.
+Turn a Big Mouth Billy Bass into a real-time voice assistant: you talk, the fish talks back — head swiveling, mouth lip-syncing to its own voice, tail flapping for emphasis. The fish runs a [Strands Agents](https://strandsagents.com) **bidirectional streaming agent** (`BidiAgent`) on a Raspberry Pi 5, streaming live audio to and from **Amazon Nova 2.5 Sonic** on Amazon Bedrock.
 
 No robotics experience needed. No prior soldering experience needed. The person this guide is based on had never plugged in a Raspberry Pi before and got a talking fish in a weekend.
 
@@ -17,7 +17,7 @@ No robotics experience needed. No prior soldering experience needed. The person 
 |---|---|
 | `README.md` | This guide — start here, work top to bottom |
 | `billy.py` | The final working Python — the talking fish |
-| `billy_openai.py` | Alternate brain: the same fish on OpenAI Realtime instead of Nova 2 Sonic |
+| `billy_openai.py` | Alternate brain: the same fish on OpenAI Realtime instead of Nova 2.5 Sonic |
 | `billy_tools.py` | Billy's assistant tools — weather, news headlines, and (optional) Google Calendar + Gmail |
 | `google_setup.py` | One-time Google OAuth setup with read-only scopes; can stash the token in AWS Secrets Manager |
 | `motors.py` | Standalone motor test rig — run this before `billy.py` to verify wiring |
@@ -88,7 +88,7 @@ Your AWS keys will live in a plaintext file on a Pi inside a fish. Fish get demo
 
 **Step 1 — Enable model access:**
 1. In the AWS console, switch region to **us-east-1 (N. Virginia)** — Nova Sonic lives there.
-2. Go to **Amazon Bedrock → Model access** and request access to **Nova 2 Sonic** (`amazon.nova-2-sonic-v1:0`). Usually instant. (Not v1 — original Nova Sonic hits end-of-life September 2026.)
+2. Go to **Amazon Bedrock → Model access** and request access to **Nova 2.5 Sonic** (`amazon.nova-2-5-sonic`). Usually instant. (Not the original Nova Sonic — that one hit end-of-life in September 2026.)
 
 **Step 2 — Create a dedicated IAM user:**
 1. Console → **IAM → Users → Create user**. Name it something honest like `billy-bass`.
@@ -105,15 +105,18 @@ Your AWS keys will live in a plaintext file on a Pi inside a fish. Fish get demo
        {
          "Sid": "BillyTalksToNovaSonicOnly",
          "Effect": "Allow",
-         "Action": "bedrock:InvokeModelWithBidirectionalStream",
-         "Resource": "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-2-sonic-v1:0"
+         "Action": [
+           "bedrock:InvokeModelWithBidirectionalStream",
+           "bedrock:InvokeModel"
+         ],
+         "Resource": "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-2-5-sonic"
        }
      ]
    }
    ```
 3. Name it `billy-nova-sonic-only`, save.
 
-That's one action on one model in one region. No S3, no EC2, no other Bedrock models, no ability to see or change anything else in your account. (If you later give Billy tools that touch AWS — say, reading a DynamoDB table — add *that specific permission* to this policy then, not broad access now.)
+That's one model in one region. (Why two actions? Nova Sonic's bidirectional stream authorizes both of them in-band — grant only the streaming one and the connection opens, then dies with a confusing mid-stream `AccessDeniedException`.) No S3, no EC2, no other Bedrock models, no ability to see or change anything else in your account. (If you later give Billy tools that touch AWS — say, reading a DynamoDB table — add *that specific permission* to this policy then, not broad access now.)
 
 **Step 4 — Create the access key:**
 1. User → **Security credentials → Create access key** → choose "Application running outside AWS".
@@ -250,13 +253,14 @@ still fine for *live* tweaking mid-session — just know it won't persist.)
 ```bash
 python3 -m venv ~/billy/.venv
 source ~/billy/.venv/bin/activate
-pip install "strands-agents[bidi,bidi-io]" gpiozero lgpio
+pip install "strands-agents[bidi,bidi-io,bidi-pyaudio]" gpiozero lgpio
 ```
 
 Notes:
 - `(.venv)` appearing in your prompt = venv active. **You must re-run the `source` line in every new SSH session** — if Python suddenly can't find strands, that's why.
 - If `lgpio` fails to build mentioning `swig`: you skipped step 1.3's swig install. `sudo apt install -y swig`, retry.
-- **Pin your version**: this build uses Strands' *experimental* bidi API and subclasses a private class. Run `pip freeze | grep strands` and write the version down. If a future upgrade breaks things, you can return to it.
+- This build uses the stable `strands.bidi` API (GA since strands-agents 1.58), so upgrades should be safe — but a fish is an appliance, and `requirements-frozen.txt` records a known-good set if you ever need to retreat to it.
+- Nova Sonic support needs **Python 3.12 or later**. Current Raspberry Pi OS (Debian 13 "Trixie") ships 3.13 and is fine; older Bookworm images ship 3.11, which is too old — reflash with a current image.
 
 ## 1.6 AWS credentials — in a file, not exports
 
@@ -288,20 +292,13 @@ chmod 600 ~/.aws/credentials
 
 ```python
 import asyncio
-from strands.experimental.bidi import BidiAgent, BidiAudioIO
-from strands.experimental.bidi.models import BidiNovaSonicModel
+from strands.bidi.agent import BidiAgent
+from strands.bidi.io import AudioIO
+from strands.bidi.models import BedrockNovaSonicModel
 
-model = BidiNovaSonicModel(
-    model_id="amazon.nova-2-sonic-v1:0",
-    provider_config={
-        "audio": {
-            "input_rate": 16000,
-            "output_rate": 16000,
-            "voice": "matthew",
-            "channels": 1,
-            "format": "pcm",
-        }
-    },
+model = BedrockNovaSonicModel(
+    model_id="amazon.nova-2-5-sonic",
+    voice="matthew",
 )
 
 agent = BidiAgent(
@@ -312,10 +309,12 @@ agent = BidiAgent(
     ),
 )
 
-audio_io = BidiAudioIO()
+audio_io = AudioIO()
 
 asyncio.run(agent.run(inputs=[audio_io.input()], outputs=[audio_io.output()]))
 ```
+
+(Audio defaults to 16 kHz mono PCM both ways, which is exactly what the fish's USB hardware wants — no audio config needed.)
 
 ```bash
 python -m py_compile ~/billy/billy.py && echo OK
@@ -329,7 +328,7 @@ Wait a few seconds, then just talk. **You should have a voice conversation.** Ct
 - `AccessDeniedException` → Bedrock model access not granted, or wrong region.
 - `no AWS credentials found` → step 1.6 not done (or typo'd).
 - `OSError: Invalid sample rate` → your `~/.asoundrc` is missing or has wrong card names (run `cat ~/.asoundrc` and `arecord -l` and compare).
-- **Billy interrupts himself** → the mic hears the speaker and the model thinks you're barging in. Point the mic away from the speaker, lower the volume. Physical placement fixes this.
+- **Billy interrupts himself** → the mic hears the speaker and the model thinks you're barging in. Point the mic away from the speaker, lower the volume. Physical placement fixes this. (Strands ships echo cancellation — `AudioIO(audio_processor=True)` — but it needs the mic and speaker on a *shared clock*. The fish's two separate USB devices drift apart, so on this hardware the full build uses a mic gate instead; see Part 4.)
 
 ---
 
@@ -489,25 +488,28 @@ When `b` makes Billy raise his head and flap his mouth like he's talking — pau
 
 # Part 4 — The Fusion (talking fish)
 
-The trick that makes lip-sync work: Nova Sonic sends audio *much faster than it plays* (a 10-second sentence arrives in ~1 second), so you can't flap the mouth when data arrives. Instead, this code measures loudness inside the audio system's playback callback — the exact bytes hitting the speaker *right now* — and drives the mouth from that. Head position comes from "is audio currently playing," and the tail flaps on loud moments and conversation events.
+The trick that makes lip-sync work: Nova Sonic sends audio *much faster than it plays* (a 10-second sentence arrives in ~1 second), so you can't flap the mouth when data arrives. Instead, `BillyBody` registers as a *second* output stream alongside `AudioIO` — the agent sends every event to all outputs, so it receives a copy of the same audio chunks the speaker plays. A pacer task then walks through those bytes at exactly the audio sample rate, so its loudness reading stays in step with what's coming out of the speaker *right now* — and that drives the mouth. Head position comes from "is audio currently playing," and the tail flaps on loud moments and conversation events.
 
 `nano ~/billy/billy_final.py`:
 
 ```python
 import asyncio
+import base64
 import math
 import time
 from array import array
 
 from gpiozero import OutputDevice, PWMOutputDevice
-from strands.experimental.bidi import BidiAgent, BidiAudioIO
-from strands.experimental.bidi.io.audio import _BidiAudioOutput
-from strands.experimental.bidi.models import BidiNovaSonicModel
-from strands.experimental.bidi.types.events import (
-    BidiInterruptionEvent,
-    BidiResponseCompleteEvent,
+from strands.bidi.agent import BidiAgent
+from strands.bidi.io import AudioIO
+from strands.bidi.models import BedrockNovaSonicModel
+from strands.bidi.types.events import (
+    BidiAudioDeltaEvent,
+    BidiBargeInEvent,
     BidiResponseStartEvent,
+    BidiResponseStopEvent,
 )
+from strands.bidi.types.io import OutputStream
 
 mouth = PWMOutputDevice(17)
 head = OutputDevice(22)
@@ -518,24 +520,56 @@ MOUTH_OPEN = 0.04   # loudness floor before the mouth opens (raise if it flutter
 EMPHASIS = 0.3      # loudness that earns a tail flap (lower = floppier fish)
 COOLDOWN = 1.2      # min seconds between emphasis flaps
 SILENCE = 1.5       # seconds of quiet before the head comes back down
+TICK = 0.05         # how often the body re-reads loudness and moves
 
 
-class BillyBody(_BidiAudioOutput):
-    """Plays the agent's voice AND tracks what the body should be doing."""
+class BillyBody(OutputStream):
+    """Tracks what the body should be doing, in sync with the speaker.
 
-    def __init__(self, config):
-        super().__init__(config)
+    AudioIO plays the voice; this stream gets a copy of the same chunks
+    and paces through them at real-time rate, so its loudness reading
+    matches the sound actually leaving the speaker.
+    """
+
+    def __init__(self):
         self.level = 0.0
         self.last_loud = 0.0
         self._tail_until = 0.0
+        self._queue = bytearray()
+        self._pacer = None
+
+    async def start(self, agent):
+        rate = agent.model.get_audio_config()["output"]["sample_rate"]
+        self._chunk = int(rate * TICK) * 2  # 16-bit mono bytes per tick
+        self._pacer = asyncio.create_task(self._pace())
+
+    async def stop(self):
+        if self._pacer:
+            self._pacer.cancel()
+        self._queue.clear()
+        self.level = 0.0
 
     async def __call__(self, event):
-        await super().__call__(event)
-        if isinstance(
-            event,
-            (BidiResponseStartEvent, BidiResponseCompleteEvent, BidiInterruptionEvent),
-        ):
+        if isinstance(event, BidiAudioDeltaEvent):
+            self._queue.extend(base64.b64decode(event["audio"]))
+        elif isinstance(event, BidiBargeInEvent):
+            # AudioIO stops playback on barge-in; drop our copy too
+            self._queue.clear()
             self.flap()
+        elif isinstance(event, (BidiResponseStartEvent, BidiResponseStopEvent)):
+            self.flap()
+
+    async def _pace(self):
+        while True:
+            samples = array("h", bytes(self._queue[: self._chunk]))
+            del self._queue[: self._chunk]
+            if samples:
+                self.level = math.sqrt(
+                    sum(s * s for s in samples) / len(samples)
+                ) / 32768.0
+            else:
+                self.level = 0.0
+            await asyncio.sleep(TICK)
 
     def flap(self, seconds=0.4):
         self._tail_until = time.monotonic() + seconds
@@ -544,29 +578,10 @@ class BillyBody(_BidiAudioOutput):
     def tail_now(self):
         return time.monotonic() < self._tail_until
 
-    def _callback(self, in_data, frame_count, *args):
-        data, flag = super()._callback(in_data, frame_count, *args)
-        samples = array("h", data)
-        if samples:
-            self.level = math.sqrt(
-                sum(s * s for s in samples) / len(samples)
-            ) / 32768.0
-        else:
-            self.level = 0.0
-        return (data, flag)
 
-
-model = BidiNovaSonicModel(
-    model_id="amazon.nova-2-sonic-v1:0",
-    provider_config={
-        "audio": {
-            "input_rate": 16000,
-            "output_rate": 16000,
-            "voice": "matthew",
-            "channels": 1,
-            "format": "pcm",
-        }
-    },
+model = BedrockNovaSonicModel(
+    model_id="amazon.nova-2-5-sonic",
+    voice="matthew",
 )
 
 agent = BidiAgent(
@@ -581,8 +596,8 @@ agent = BidiAgent(
     ),
 )
 
-audio_io = BidiAudioIO()
-body = BillyBody({})
+audio_io = AudioIO()
+body = BillyBody()
 
 
 async def body_loop():
@@ -617,14 +632,14 @@ async def body_loop():
             head.off()
             tail.off()
 
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(TICK)
 
 
 async def main():
     print("Billy is ALIVE... (Ctrl+C to stop)")
     try:
         await asyncio.gather(
-            agent.run(inputs=[audio_io.input()], outputs=[body]),
+            agent.run(inputs=[audio_io.input()], outputs=[audio_io.output(), body]),
             body_loop(),
         )
     finally:
@@ -662,11 +677,11 @@ Talk to your fish. Expected choreography: head rises as Billy answers → mouth 
 
 ## 🔁 Alternate implementation: OpenAI Realtime
 
-Strands' `BidiAgent` is provider-agnostic, so the same fish runs on OpenAI's Realtime API instead of Nova 2 Sonic — `billy_openai.py` is that build. The diff against `billy.py` is essentially the model constructor and a voice. OpenAI also brings its own voice lineup — there's a British-accented one (`ballad`, used in this file), among others — so pick whichever suits your fish.
+Strands' `BidiAgent` is provider-agnostic, so the same fish runs on OpenAI's Realtime API instead of Nova 2.5 Sonic — `billy_openai.py` is that build. The diff against `billy.py` is essentially the model constructor and a voice. OpenAI also brings its own voice lineup — there's a British-accented one (`ballad`, used in this file), among others — so pick whichever suits your fish.
 
 ```bash
-pip install websockets            # in the venv; not in requirements-frozen.txt
-export OPENAI_API_KEY=sk-...      # the model auths against OpenAI, not AWS
+pip install "strands-agents[bidi-openai]"   # in the venv
+export OPENAI_API_KEY=sk-...                # the model auths against OpenAI, not AWS
 python billy_openai.py
 ```
 
@@ -705,12 +720,17 @@ Weather comes from [Open-Meteo](https://open-meteo.com/) — no API key, no acco
 
 1. `pip install strands-google` (both laptop and Pi).
 2. In [Google Cloud Console](https://console.cloud.google.com/): create a project, enable the **Gmail API** and **Google Calendar API**, and create an **OAuth client ID** of type *Desktop app*. Download the client JSON and save it somewhere safe outside this repo — credentials never belong in a git working tree.
-3. On your laptop, run this repo's setup script — NOT strands-google's built-in runner, whose default scopes include full Gmail send/modify, Drive, Photos, and Contacts. `google_setup.py` requests exactly two **read-only** scopes (Gmail + Calendar); Billy has no business sending email as you:
+3. **Publish the OAuth app to production, or your token dies every 7 days.** This is the step everyone skips and then pays for a week later. New OAuth apps start in *Testing* mode, and Google expires Testing-mode refresh tokens after seven days — Billy's email tools will silently break weekly until you do this. In the console under **APIs & Services → OAuth consent screen** (Google now calls this area "Google Auth Platform"):
+   - **Branding** page: fill in the required fields — an app name, your email twice (support + developer contact). To publish, Google also wants an **application home page** on a domain you own and have added under *authorized domains* (a personal site or blog is fine; GitHub URLs are rejected because you don't own github.com). **Skip the logo** — uploading one drags you into Google's formal verification review.
+   - **Audience** page: **Publish app**, from Testing to In production.
+   - Google will warn the app "requires verification." Ignore it — you're the only user. The only consequence is a scary consent screen (next step) that you'll click through exactly once.
+   - These fields are consent-screen cosmetics; filling them in doesn't expose your email or weaken anything. Tokens are only minted when someone clicks Allow while signed in to *their* account, using *your* client JSON.
+4. On your laptop, run this repo's setup script — NOT strands-google's built-in runner, whose default scopes include full Gmail send/modify, Drive, Photos, and Contacts. `google_setup.py` requests exactly two **read-only** scopes (Gmail + Calendar); Billy has no business sending email as you:
    ```bash
    python google_setup.py path/to/your-downloaded-client.json
    ```
-   A browser opens; approve access. This writes `gmail_token.json` next to your client file.
-4. Get the token to the fish — pick one:
+   A browser opens. You'll hit the "Google hasn't verified this app" warning — click **Advanced → Go to (your app) (unsafe)**; it's your own app, so you're vouching for yourself. Approve the two read-only permissions. This writes `gmail_token.json` next to your client file.
+5. Get the token to the fish — pick one:
    - **Simple**: copy the `gmail_token.json` it wrote to the Pi (again, outside any git repo) and add `GOOGLE_OAUTH_CREDENTIALS=/path/to/gmail_token.json` to your `billy.env`.
    - **Nicer (recommended if you did the IoT credentials appendix)**: keep the token off the SD card entirely by storing it in AWS Secrets Manager (~$0.40/month):
      ```bash
@@ -761,4 +781,4 @@ Why it's better: no long-lived secret exists on the device at all; each fish has
 
 ---
 
-*Built with Strands Agents (experimental bidi API — pin your version!), Amazon Nova Sonic, a Raspberry Pi 5, and a fish. When in doubt, ask Claude — bring this guide and your error message.* 🐟
+*Built with Strands Agents bidi (GA at last!), Amazon Nova 2.5 Sonic, a Raspberry Pi 5, and a fish. When in doubt, ask Claude — bring this guide and your error message.* 🐟
