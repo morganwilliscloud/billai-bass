@@ -55,7 +55,11 @@ Resources:
                 Action:
                   - bedrock:InvokeModelWithBidirectionalStream
                   - bedrock:InvokeModel
-                Resource: !Sub arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.nova-2-sonic-v1:0
+                # Both current Sonic generations, so you can pin billy.py to
+                # either model without redeploying this stack.
+                Resource:
+                  - !Sub arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.nova-2-5-sonic
+                  - !Sub arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.nova-2-sonic-v1:0
         # One secret, read-only, and only when the parameter is set.
         - !If
           - HasGoogleTokenSecret
